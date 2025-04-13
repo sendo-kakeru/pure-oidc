@@ -2,6 +2,7 @@ import { redirect } from "react-router";
 import type { Route } from "./+types/api.auth.google";
 import { flashMessage } from "~/libs/flash-message";
 import { env } from "env.server";
+import { sessionStorage } from "~/features/auth/sessionStorage";
 
 export type GoogleProfile = {
   sub: string;
@@ -31,6 +32,30 @@ export async function loader({ request }: Route.LoaderArgs) {
       message: "ログインに失敗しました。",
     });
   }
+  const session = await sessionStorage.getSession(
+    request.headers.get("Cookie")
+  );
+  const stateFromUrl = url.searchParams.get("state");
+  const stateFromSession = session.get("oauth_state");
+  if (!stateFromUrl || stateFromUrl !== stateFromSession) {
+    console.warn("OAuth state mismatch");
+    return errorRedirectWithFlash({
+      request,
+      message: "セキュリティ検証に失敗しました。",
+    });
+  }
+
+  // @todo: oidc実装時に検証追加
+  // const nonceFromUrl = url.searchParams.get("nonce");
+  // const nonceFromSession = session.get("oauth_nonce");
+
+  // if (!nonceFromUrl || nonceFromUrl !== nonceFromSession) {
+  //   console.warn("OAuth nonce mismatch");
+  //   return errorRedirectWithFlash({
+  //     request,
+  //     message: "セキュリティ検証に失敗しました。",
+  //   });
+  // }
 
   const code = url.searchParams.get("code");
   if (!code) {

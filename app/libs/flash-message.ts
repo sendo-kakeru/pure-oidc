@@ -12,7 +12,7 @@ export type FlashMessageData = {
   };
 };
 
-export const sessionStorage = createCookieSessionStorage<FlashMessageData>({
+const sessionStorage = createCookieSessionStorage<FlashMessageData>({
   cookie: {
     name: "flash_message_session",
     sameSite: "lax",
