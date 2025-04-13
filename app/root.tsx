@@ -1,4 +1,5 @@
 import {
+  data,
   isRouteErrorResponse,
   Links,
   Meta,
@@ -9,6 +10,10 @@ import {
 
 import type { Route } from "./+types/root";
 import "./app.css";
+import "@radix-ui/themes/styles.css";
+import { Theme } from "@radix-ui/themes";
+import { flashMessage } from "./libs/flash-message";
+import FlashMessage from "./components/FlashMessage";
 
 export const links: Route.LinksFunction = () => [
   { rel: "preconnect", href: "https://fonts.googleapis.com" },
@@ -23,6 +28,22 @@ export const links: Route.LinksFunction = () => [
   },
 ];
 
+export async function loader({ request }: Route.LoaderArgs) {
+  const { data: flashMessageData, cookie } = await flashMessage.get({
+    request,
+  });
+  return data(
+    {
+      flashMessage: flashMessageData
+        ? { ...flashMessageData, key: Date.now() }
+        : undefined,
+    },
+    {
+      headers: { "Set-Cookie": cookie },
+    }
+  );
+}
+
 export function Layout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
@@ -33,7 +54,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <Links />
       </head>
       <body>
-        {children}
+        <Theme>
+          <div className="grid gap-y-12 px-4 max-w-6xl mx-auto py-8 lg:py-16 h-full">
+            {children}
+          </div>
+        </Theme>
         <ScrollRestoration />
         <Scripts />
       </body>
@@ -41,8 +66,20 @@ export function Layout({ children }: { children: React.ReactNode }) {
   );
 }
 
-export default function App() {
-  return <Outlet />;
+export default function App({ loaderData }: Route.ComponentProps) {
+  return (
+    <>
+      {loaderData.flashMessage?.message && (
+        <FlashMessage
+          color={loaderData.flashMessage.color ?? "green"}
+          key={loaderData.flashMessage.key}
+        >
+          {loaderData.flashMessage.message}
+        </FlashMessage>
+      )}
+      <Outlet />
+    </>
+  );
 }
 
 export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {

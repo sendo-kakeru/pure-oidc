@@ -1,15 +1,11 @@
-import { Link } from "react-router";
+import { data, Link as RRLink } from "react-router";
 import type { Route } from "./+types/_index";
+import { Link } from "@radix-ui/themes";
 
-export function meta({}: Route.MetaArgs) {
-  return [
-    { title: "New React Router App" },
-    { name: "description", content: "Welcome to React Router!" },
-  ];
-}
-
-export default function Home() {
+export default function Home({ loaderData }: Route.ComponentProps) {
   return (
-    <Link to="/login">ログインページへ</Link>
+    <Link asChild>
+      <RRLink to="/login">ログインページへ</RRLink>
+    </Link>
   );
 }
