@@ -1,10 +1,11 @@
 import { createCookieSessionStorage } from "react-router";
+import type { User } from "./user";
 
 export const sessionStorage = createCookieSessionStorage<{
   oauth_state: string;
   pkce_code_verifier: string;
-  // @todo: oidc実装時に検証追加
-  // oauth_nonce: string;
+  oauth_nonce: string;
+  me: User;
 }>({
   cookie: {
     name: "auth_message_session",

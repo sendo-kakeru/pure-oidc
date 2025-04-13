@@ -1,18 +1,9 @@
-import { redirect } from "react-router";
+import { redirect, redirectDocument } from "react-router";
 import type { Route } from "./+types/api.auth.google";
 import { flashMessage } from "~/libs/flash-message";
 import { env } from "env.server";
 import { sessionStorage } from "~/features/auth/sessionStorage";
-
-export type GoogleProfile = {
-  sub: string;
-  name: string;
-  given_name: string;
-  family_name: string;
-  picture: string;
-  email: string;
-  email_verified: boolean;
-};
+import { jwtVerify, createRemoteJWKSet, type JWTPayload } from "jose";
 
 export type GoogleOAuthTokens = {
   access_token: string;
@@ -25,45 +16,36 @@ export type GoogleOAuthTokens = {
 
 export async function loader({ request }: Route.LoaderArgs) {
   const url = new URL(request.url);
-  const error = url.searchParams.get("error");
-  if (error) {
+  const headers = new Headers(request.headers);
+
+  if (url.searchParams.get("error")) {
     return errorRedirectWithFlash({
       request,
       message: "ログインに失敗しました。",
     });
   }
-  const session = await sessionStorage.getSession(
-    request.headers.get("Cookie")
+
+  const authSession = await sessionStorage.getSession(
+    request.headers.get("cookie")
   );
+
   const stateFromUrl = url.searchParams.get("state");
-  const stateFromSession = session.get("oauth_state");
+  const stateFromSession = authSession.get("oauth_state");
   if (!stateFromUrl || stateFromUrl !== stateFromSession) {
     console.warn("OAuth state mismatch");
     return errorRedirectWithFlash({
       request,
-      message: "セキュリティ検証に失敗しました。",
+      message: "セキュリティ検証に失敗しました（state）。",
     });
   }
 
-  const pkceCodeVerifier = session.get("pkce_code_verifier");
+  const pkceCodeVerifier = authSession.get("pkce_code_verifier");
   if (!pkceCodeVerifier) {
     return errorRedirectWithFlash({
       request,
-      message: "PKCE検証情報が見つかりませんでした。",
+      message: "PKCE情報が見つかりませんでした。",
     });
   }
-
-  // @todo: oidc実装時に検証追加
-  // const nonceFromUrl = url.searchParams.get("nonce");
-  // const nonceFromSession = session.get("oauth_nonce");
-
-  // if (!nonceFromUrl || nonceFromUrl !== nonceFromSession) {
-  //   console.warn("OAuth nonce mismatch");
-  //   return errorRedirectWithFlash({
-  //     request,
-  //     message: "セキュリティ検証に失敗しました。",
-  //   });
-  // }
 
   const code = url.searchParams.get("code");
   if (!code) {
@@ -73,7 +55,7 @@ export async function loader({ request }: Route.LoaderArgs) {
     });
   }
 
-  let tokens: GoogleOAuthTokens | undefined;
+  let tokens: GoogleOAuthTokens;
   try {
     const getTokenResponse = await fetch(
       "https://oauth2.googleapis.com/token",
@@ -102,52 +84,90 @@ export async function loader({ request }: Route.LoaderArgs) {
     }
 
     tokens = await getTokenResponse.json();
-    console.log("Google OAuth tokens:", tokens);
   } catch (err) {
     console.error("Token fetch error:", err);
     return errorRedirectWithFlash({
       request,
-      message: "Googleトークン取得中にエラーが発生しました。",
+      message: "トークン取得中にエラーが発生しました。",
     });
   }
 
-  if (!tokens?.access_token) {
+  if (!tokens.id_token) {
     return errorRedirectWithFlash({
       request,
-      message: "アクセストークンが取得できませんでした。",
+      message: "IDトークンが返されませんでした。",
     });
   }
 
+  let idTokenPayload: JWTPayload;
   try {
-    const getProfileResponse = await fetch(
-      "https://www.googleapis.com/oauth2/v3/userinfo",
-      {
-        headers: {
-          Authorization: `Bearer ${tokens.access_token}`,
-        },
-      }
+    const JWKS = createRemoteJWKSet(
+      new URL("https://www.googleapis.com/oauth2/v3/certs")
     );
 
-    if (!getProfileResponse.ok) {
-      console.error(
-        "Failed to fetch userinfo:",
-        await getProfileResponse.text()
-      );
+    const { payload } = await jwtVerify(tokens.id_token, JWKS, {
+      issuer: "https://accounts.google.com",
+      audience: env.GOOGLE_CLIENT_ID,
+    });
+
+    const nonceFromSession = authSession.get("oauth_nonce");
+    if (payload.nonce !== nonceFromSession) {
+      console.warn("OIDC nonce mismatch", {
+        fromToken: payload.nonce,
+        fromSession: nonceFromSession,
+      });
       return errorRedirectWithFlash({
         request,
-        message: "ユーザープロフィールの取得に失敗しました。",
+        message: "セキュリティ検証（nonce）に失敗しました。",
       });
     }
 
-    const profile: GoogleProfile = await getProfileResponse.json();
-    return Response.json(profile);
+    idTokenPayload = payload;
   } catch (err) {
-    console.error("Profile fetch error:", err);
+    console.error("ID Token verification failed:", err);
     return errorRedirectWithFlash({
       request,
-      message: "Googleユーザー情報取得中にエラーが発生しました。",
+      message: "IDトークンの検証に失敗しました。",
     });
   }
+
+  authSession.unset("oauth_state");
+  authSession.unset("oauth_nonce");
+  authSession.unset("pkce_code_verifier");
+
+  if (typeof idTokenPayload.email !== "string") {
+    return errorRedirectWithFlash({
+      request,
+      message: "メールアドレスが取得できませんでした。",
+    });
+  }
+  if (typeof idTokenPayload.name !== "string") {
+    return errorRedirectWithFlash({
+      request,
+      message: "名前が取得できませんでした。",
+    });
+  }
+  if (typeof idTokenPayload.picture !== "string") {
+    return errorRedirectWithFlash({
+      request,
+      message: "プロフィール画像が取得できませんでした。",
+    });
+  }
+  authSession.set("me", {
+    name: idTokenPayload.name,
+    email: idTokenPayload.email,
+    image: idTokenPayload.picture,
+  });
+
+  const { cookie } = await flashMessage.set({
+    request,
+    data: {
+      message: "ログインしました。",
+    },
+  });
+  headers.set("Set-Cookie", await sessionStorage.commitSession(authSession));
+  headers.append("Set-Cookie", cookie);
+  return redirectDocument("/", { headers });
 }
 
 async function errorRedirectWithFlash({
@@ -164,6 +184,7 @@ async function errorRedirectWithFlash({
       message,
     },
   });
+
   return redirect("/login", {
     headers: { "Set-Cookie": cookie },
   });

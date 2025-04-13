@@ -14,6 +14,8 @@ import "@radix-ui/themes/styles.css";
 import { Theme } from "@radix-ui/themes";
 import { flashMessage } from "./libs/flash-message";
 import FlashMessage from "./components/FlashMessage";
+import { sessionStorage } from "./features/auth/sessionStorage";
+import Header from "./components/Header";
 
 export const links: Route.LinksFunction = () => [
   { rel: "preconnect", href: "https://fonts.googleapis.com" },
@@ -32,8 +34,13 @@ export async function loader({ request }: Route.LoaderArgs) {
   const { data: flashMessageData, cookie } = await flashMessage.get({
     request,
   });
+  const session = await sessionStorage.getSession(
+    request.headers.get("cookie")
+  );
+  const me = session.get("me");
   return data(
     {
+      me,
       flashMessage: flashMessageData
         ? { ...flashMessageData, key: Date.now() }
         : undefined,
@@ -54,11 +61,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <Links />
       </head>
       <body>
-        <Theme>
-          <div className="grid gap-y-12 px-4 max-w-6xl mx-auto py-8 lg:py-16 h-full">
-            {children}
-          </div>
-        </Theme>
+        {children}
+
         <ScrollRestoration />
         <Scripts />
       </body>
@@ -68,7 +72,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
 export default function App({ loaderData }: Route.ComponentProps) {
   return (
-    <>
+    <Theme className="p-4">
+      <Header me={loaderData.me} />
       {loaderData.flashMessage?.message && (
         <FlashMessage
           color={loaderData.flashMessage.color ?? "green"}
@@ -77,8 +82,10 @@ export default function App({ loaderData }: Route.ComponentProps) {
           {loaderData.flashMessage.message}
         </FlashMessage>
       )}
-      <Outlet />
-    </>
+      <div className="grid gap-y-12 px-4 max-w-6xl mx-auto py-8 lg:py-16 h-full shadow-2xl mt-16">
+        <Outlet />
+      </div>
+    </Theme>
   );
 }
 

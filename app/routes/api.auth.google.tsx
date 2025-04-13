@@ -8,7 +8,7 @@ import { generateCodeVerifier } from "~/utils";
 export async function action({ request }: Route.ActionArgs) {
   const url = new URL("https://accounts.google.com/o/oauth2/v2/auth");
   const session = await sessionStorage.getSession(
-    request.headers.get("Cookie")
+    request.headers.get("cookie")
   );
   const state = generateCodeVerifier();
   const nonce = generateCodeVerifier();
@@ -16,8 +16,7 @@ export async function action({ request }: Route.ActionArgs) {
 
   session.set("oauth_state", state);
   session.set("pkce_code_verifier", pkceCodeVerifier);
-  // @todo: oidc実装時に検証追加
-  // session.set("oauth_nonce", nonce);
+  session.set("oauth_nonce", nonce);
 
   url.searchParams.set("client_id", env.GOOGLE_CLIENT_ID);
   url.searchParams.set(
