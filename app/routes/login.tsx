@@ -1,7 +1,13 @@
+import { Button, Heading } from "@radix-ui/themes";
+import { Form } from "react-router";
+
 export default function Login() {
   return (
-    <div className="grid">
-      <h1>login</h1>
-    </div>
+    <>
+      <Heading>ログイン</Heading>
+      <Form method="post" action="/api/auth/google">
+        <Button type="submit">Googleでログイン</Button>
+      </Form>
+    </>
   );
 }
