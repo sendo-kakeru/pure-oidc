@@ -45,6 +45,14 @@ export async function loader({ request }: Route.LoaderArgs) {
     });
   }
 
+  const pkceCodeVerifier = session.get("pkce_code_verifier");
+  if (!pkceCodeVerifier) {
+    return errorRedirectWithFlash({
+      request,
+      message: "PKCE検証情報が見つかりませんでした。",
+    });
+  }
+
   // @todo: oidc実装時に検証追加
   // const nonceFromUrl = url.searchParams.get("nonce");
   // const nonceFromSession = session.get("oauth_nonce");
@@ -80,6 +88,7 @@ export async function loader({ request }: Route.LoaderArgs) {
           client_secret: env.GOOGLE_CLIENT_SECRET,
           redirect_uri: `${env.BASE_URL}/api/auth/google/callback`,
           grant_type: "authorization_code",
+          code_verifier: pkceCodeVerifier,
         }),
       }
     );

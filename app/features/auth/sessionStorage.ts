@@ -2,6 +2,7 @@ import { createCookieSessionStorage } from "react-router";
 
 export const sessionStorage = createCookieSessionStorage<{
   oauth_state: string;
+  pkce_code_verifier: string;
   // @todo: oidc実装時に検証追加
   // oauth_nonce: string;
 }>({
